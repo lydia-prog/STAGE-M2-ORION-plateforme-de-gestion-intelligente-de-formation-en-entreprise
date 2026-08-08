@@ -1,34 +1,101 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import CourseCard from "../../components/courses/CourseCard";
+
+interface Course {
+  id: string;
+  title: string;
+  category: string;
+  progress: number;
+  duration: string;
+}
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 export default function CourseCatalog() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [enrollingId, setEnrollingId] = useState<string | null>(null);
 
-  // Liste fictive de cours disponibles
-  const courses = [
-    { id: 1, title: "Sécurité et Conformité en Entreprise", category: "Réglementation", progress: 0, duration: "2h 30min" },
-    { id: 2, title: "Introduction à la Gestion de Projet Agile", category: "Management", progress: 0, duration: "4h 00min" },
-    { id: 3, title: "Bonnes pratiques de Cybersécurité", category: "IT / Sécurité", progress: 0, duration: "1h 15min" },
-    { id: 4, title: "Communication efficace en équipe", category: "Soft Skills", progress: 0, duration: "3h 00min" },
-  ];
+  const storedUser = JSON.parse(localStorage.getItem("user") || "null");
 
-  // Filtrer les cours selon la recherche
-  const filteredCourses = courses.filter(course => 
-    course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    course.category.toLowerCase().includes(searchTerm.toLowerCase())
+  const loadCourses = () => {
+    const url = storedUser
+      ? `${API_BASE}/formations/user/${storedUser.id}`
+      : `${API_BASE}/formations`;
+
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error("Erreur lors du chargement des formations");
+        return res.json();
+      })
+      .then((data: Course[]) => {
+        setCourses(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setError("Impossible de charger les formations.");
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadCourses();
+  }, []);
+
+  const handleEnroll = async (courseId: string) => {
+    if (!storedUser) {
+      alert("Veuillez vous connecter pour vous inscrire à une formation.");
+      return;
+    }
+
+    setEnrollingId(courseId);
+    try {
+      const res = await fetch(`${API_BASE}/formations/${courseId}/inscrire`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: storedUser.id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.detail || "Erreur lors de l'inscription.");
+        return;
+      }
+
+      loadCourses(); // Rafraîchit la liste
+    } catch (err) {
+      console.error(err);
+      alert("Erreur réseau lors de l'inscription.");
+    } finally {
+      setEnrollingId(null);
+    }
+  };
+
+  const filteredCourses = courses.filter(
+    (course) =>
+      course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      course.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Catalogue des Formations</h1>
-          <p className="text-sm text-gray-500 mt-1">Explorez et inscrivez-vous aux modules disponibles pour développer vos compétences.</p>
+          <h1 className="text-2xl font-bold text-slate-800">
+            Catalogue des Formations
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Explorez et inscrivez-vous aux modules disponibles pour développer
+            vos compétences.
+          </p>
         </div>
 
-        {/* Barre de recherche */}
         <div className="w-full md:w-72">
-          <input 
+          <input
             type="text"
             placeholder="Rechercher un cours..."
             value={searchTerm}
@@ -38,20 +105,28 @@ export default function CourseCatalog() {
         </div>
       </div>
 
-      {/* Grille des cours */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredCourses.length > 0 ? (
+        {loading ? (
+          <p className="text-sm text-gray-500 col-span-full">Chargement...</p>
+        ) : error ? (
+          <p className="text-sm text-red-500 col-span-full">{error}</p>
+        ) : filteredCourses.length > 0 ? (
           filteredCourses.map((course) => (
-            <CourseCard 
+            <CourseCard
               key={course.id}
+              id={course.id} // ✅ CORRECTION : l'ID est bien passé
               title={course.title}
               category={course.category}
               progress={course.progress}
               duration={course.duration}
+              onEnroll={() => handleEnroll(course.id)}
+              enrolling={enrollingId === course.id}
             />
           ))
         ) : (
-          <p className="text-sm text-gray-500 col-span-full">Aucune formation ne correspond à votre recherche.</p>
+          <p className="text-sm text-gray-500 col-span-full">
+            Aucune formation ne correspond à votre recherche.
+          </p>
         )}
       </div>
     </div>

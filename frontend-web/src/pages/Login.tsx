@@ -1,23 +1,66 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom"; // 1. Importez useNavigate
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [error, setError] = useState("");
   
-  const navigate = useNavigate(); // 2. Initialisez le hook
+  const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (isRegistering) {
-      alert(`Compte créé avec succès pour ${name} ! Vous pouvez vous connecter.`);
-      setIsRegistering(false);
-    } else {
-      // 3. Redirection vers le dashboard après la connexion
-      navigate("/dashboard");
+    setError("");
+
+    try {
+      if (isRegistering) {
+        // --- REQUÊTE INSCRIPTION VIA LE PROXY VITE ---
+        const response = await fetch("/api/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            nom: name,
+            email: email,
+            password: password,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Erreur lors de l'inscription.");
+        }
+
+        alert(`Compte créé avec succès pour ${data.nom} ! Vous pouvez vous connecter.`);
+        setIsRegistering(false);
+      } else {
+        // --- REQUÊTE CONNEXION VIA LE PROXY VITE ---
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email,
+            password: password,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Email ou mot de passe incorrect.");
+        }
+
+        localStorage.setItem("user", JSON.stringify(data.user));
+        navigate("/dashboard");
+      }
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -38,6 +81,12 @@ export default function Login() {
               : "Entrez vos identifiants professionnels"}
           </p>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-lg text-center">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {isRegistering && (
@@ -91,7 +140,10 @@ export default function Login() {
             {isRegistering ? "Vous avez déjà un compte ?" : "Pas encore de compte ?"}
             <button 
               type="button"
-              onClick={() => setIsRegistering(!isRegistering)}
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setError("");
+              }}
               className="ml-1.5 text-blue-600 font-semibold hover:underline focus:outline-none"
             >
               {isRegistering ? "Se connecter" : "Créer un compte"}
