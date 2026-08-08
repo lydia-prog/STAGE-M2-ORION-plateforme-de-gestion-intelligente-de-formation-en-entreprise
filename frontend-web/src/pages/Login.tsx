@@ -6,6 +6,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [role, setRole] = useState("apprenant");
   const [error, setError] = useState("");
   
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function Login() {
 
     try {
       if (isRegistering) {
-        // --- REQUÊTE INSCRIPTION VIA LE PROXY VITE ---
+        // --- REQUÊTE INSCRIPTION ---
         const response = await fetch("/api/register", {
           method: "POST",
           headers: {
@@ -26,6 +27,7 @@ export default function Login() {
             nom: name,
             email: email,
             password: password,
+            role: role,
           }),
         });
 
@@ -35,10 +37,10 @@ export default function Login() {
           throw new Error(data.detail || "Erreur lors de l'inscription.");
         }
 
-        alert(`Compte créé avec succès pour ${data.nom} ! Vous pouvez vous connecter.`);
+        alert(`Compte créé avec succès pour ${data.nom} (${data.role}) ! Vous pouvez vous connecter.`);
         setIsRegistering(false);
       } else {
-        // --- REQUÊTE CONNEXION VIA LE PROXY VITE ---
+        // --- REQUÊTE CONNEXION AVEC REDIRECTION PAR RÔLE ---
         const response = await fetch("/api/login", {
           method: "POST",
           headers: {
@@ -56,8 +58,17 @@ export default function Login() {
           throw new Error(data.detail || "Email ou mot de passe incorrect.");
         }
 
+        // 1. Sauvegarde des informations utilisateur
         localStorage.setItem("user", JSON.stringify(data.user));
-        navigate("/dashboard");
+
+        // 2. Redirection conditionnelle selon le rôle récupéré du backend
+        if (data.user.role === "admin") {
+          navigate("/admin"); // 👈 Redirige vers la page admin
+        } else if (data.user.role === "rh") {
+          navigate("/rh");    // Vers la page RH (si applicable)
+        } else {
+          navigate("/dashboard"); // Vers l'espace apprenant classique
+        }
       }
     } catch (err: any) {
       setError(err.message);
@@ -90,17 +101,32 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {isRegistering && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nom complet</label>
-              <input 
-                type="text" 
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="ex: Jean Dupont" 
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition text-sm text-slate-800"
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nom complet</label>
+                <input 
+                  type="text" 
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="ex: Jean Dupont" 
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition text-sm text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Profil / Rôle</label>
+                <select 
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition text-sm text-slate-800 bg-white"
+                >
+                  <option value="apprenant">Apprenant</option>
+                  <option value="admin">Administrateur</option>
+                  <option value="rh">RH</option>
+                </select>
+              </div>
+            </>
           )}
 
           <div>

@@ -15,6 +15,7 @@ class User(Base):
     nom = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
+    role = Column(String(50), nullable=False, default="apprenant")  # 👈 Ajouté ici ("apprenant", "admin", "rh")
 
 
 class Certification(Base):

@@ -37,7 +37,7 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
-# --- 1. ROUTE D'INSCRIPTION ---
+# --- 1. ROUTE D'INSCRIPTION (Corrigée pour accepter le rôle) ---
 @app.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def register_apprenant(user: schemas.UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(models.User.email == user.email).first()
@@ -52,7 +52,8 @@ def register_apprenant(user: schemas.UserCreate, db: Session = Depends(get_db)):
     new_user = models.User(
         nom=user.nom,
         email=user.email,
-        hashed_password=hashed_pwd
+        hashed_password=hashed_pwd,
+        role=user.role if user.role else "apprenant"  # 👈 Récupère le rôle choisi (admin, rh, apprenant)
     )
 
     db.add(new_user)
@@ -77,11 +78,26 @@ def login_apprenant(credentials: schemas.UserLogin, db: Session = Depends(get_db
         "user": {
             "id": user.id,
             "nom": user.nom,
-            "email": user.email
+            "email": user.email,
+            "role": user.role  # 👈 Transmet le rôle à React pour la redirection
         }
     }
 
-# --- 3. ROUTE : LISTE DES CERTIFICATIONS D'UN USER ---
+# --- 3. ROUTE ADMIN : LISTER TOUS LES UTILISATEURS ---
+@app.get("/admin/users")
+def get_all_users(db: Session = Depends(get_db)):
+    users = db.query(models.User).all()
+    return [
+        {
+            "id": u.id,
+            "nom": u.nom,
+            "email": u.email,
+            "role": u.role
+        }
+        for u in users
+    ]
+
+# --- 4. ROUTE : LISTE DES CERTIFICATIONS D'UN USER ---
 @app.get("/certifications/{user_id}", response_model=list[schemas.CertificationOut])
 def get_certifications(user_id: int, db: Session = Depends(get_db)):
     certifications = db.query(models.Certification).filter(
@@ -89,7 +105,7 @@ def get_certifications(user_id: int, db: Session = Depends(get_db)):
     ).all()
     return certifications
 
-# --- 4. ROUTE : TÉLÉCHARGER UN CERTIFICAT ---
+# --- 5. ROUTE : TÉLÉCHARGER UN CERTIFICAT ---
 @app.get("/certifications/{cert_id}/download")
 def download_certification(cert_id: int, db: Session = Depends(get_db)):
     cert = db.query(models.Certification).filter(
@@ -105,7 +121,7 @@ def download_certification(cert_id: int, db: Session = Depends(get_db)):
 
     return FileResponse(file_path, media_type="application/pdf", filename=cert.fichier_pdf)
 
-# --- 5. ROUTE : LISTE DES ÉVALUATIONS D'UN USER ---
+# --- 6. ROUTE : LISTE DES ÉVALUATIONS D'UN USER ---
 @app.get("/evaluations/{user_id}", response_model=list[schemas.EvaluationOut])
 def get_evaluations(user_id: int, db: Session = Depends(get_db)):
     resultats = (
@@ -133,7 +149,7 @@ def get_evaluations(user_id: int, db: Session = Depends(get_db)):
 
     return output
 
-# --- 6. ROUTE : CATALOGUE DE FORMATIONS (sans progression) ---
+# --- 7. ROUTE : CATALOGUE DE FORMATIONS (sans progression) ---
 @app.get("/formations", response_model=list[schemas.CourseOut])
 def get_formations(db: Session = Depends(get_db)):
     formations = db.query(models.Formation).all()
@@ -148,7 +164,7 @@ def get_formations(db: Session = Depends(get_db)):
         for f in formations
     ]
 
-# --- 7. ROUTE : CATALOGUE DE FORMATIONS AVEC PROGRESSION D'UN USER ---
+# --- 8. ROUTE : CATALOGUE DE FORMATIONS AVEC PROGRESSION D'UN USER ---
 @app.get("/formations/user/{user_id}", response_model=list[schemas.CourseOut])
 def get_formations_with_progress(user_id: int, db: Session = Depends(get_db)):
     formations = db.query(models.Formation).all()
@@ -170,31 +186,20 @@ def get_formations_with_progress(user_id: int, db: Session = Depends(get_db)):
         for f in formations
     ]
 
-
-# ====================================================
-# 8. ROUTE D'INSCRIPTION À UNE FORMATION (AJOUTÉE)
-# ====================================================
+# --- 9. ROUTE D'INSCRIPTION À UNE FORMATION ---
 class InscriptionRequest(BaseModel):
     user_id: int
 
 @app.post("/formations/{formation_id}/inscrire")
 def inscrire_formation(formation_id: str, req: InscriptionRequest, db: Session = Depends(get_db)):
-    """
-    Inscription d'un utilisateur à une formation.
-    Vérifie l'existence de la formation et de l'utilisateur,
-    évite les doublons et enregistre l'inscription.
-    """
-    # Vérifier que la formation existe
     formation = db.query(models.Formation).filter(models.Formation.id == formation_id).first()
     if not formation:
         raise HTTPException(status_code=404, detail="Formation non trouvée")
 
-    # Vérifier que l'utilisateur existe
     user = db.query(models.User).filter(models.User.id == req.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
 
-    # Vérifier qu'il n'est pas déjà inscrit
     existing = db.query(models.InscriptionFormation).filter(
         models.InscriptionFormation.id_utilisateur == req.user_id,
         models.InscriptionFormation.id_formation == formation_id
@@ -202,13 +207,10 @@ def inscrire_formation(formation_id: str, req: InscriptionRequest, db: Session =
     if existing:
         raise HTTPException(status_code=400, detail="Déjà inscrit à cette formation")
 
-    # Créer l'inscription
     new_inscription = models.InscriptionFormation(
         id_utilisateur=req.user_id,
         id_formation=formation_id,
         progression=0,
-        # Si votre modèle a une colonne date_inscription, ajoutez :
-        # date_inscription=datetime.now()
     )
     db.add(new_inscription)
     db.commit()
